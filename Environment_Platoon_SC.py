@@ -547,8 +547,7 @@ class Environ:
                     V2V_Rate_semantic[i, 3] = 4 / ((V2V_length[i, 3]+1) / self.bandwidth)
                     QoE1=0
                     for j in range(self.size_platoon-1):
-                        QoE1 += w / (1 + np.exp(beta_S[i] * (phi_S[i] - V2V_Rate_semantic[i, j] / 1000)))\
-                                + (1 - w) / (1 + np.exp(lamda[i] * (si[i] - V2V_semantic[i, j])))
+                        QoE1 += w / (1 + np.exp(beta_S[i] * (phi_S[i] - V2V_Rate_semantic[i, j] / 1000))) + (1 - w) / (1 + np.exp(lamda[i] * (si[i] - V2V_semantic[i, j])))
                     QoE.append(QoE1/4)
 
         if V2I_number == 1:#只有一个V2I链路，用单模态,其中20为单模态的句子长度
@@ -572,8 +571,7 @@ class Environ:
                     V2V_Rate_semantic[i, 3] = 4 / ((V2V_length[i, 3]+1) / self.bandwidth)
                     QoE2=0
                     for j in range(self.size_platoon-1):
-                        QoE2 += w / (1 + np.exp(beta_S[i] * (phi_S[i] - V2V_Rate_semantic[i, j] / 1000)))\
-                                + (1 - w) / (1 + np.exp(lamda[i] * (si[i] - V2V_semantic[i, j])))
+                        QoE2 += w / (1 + np.exp(beta_S[i] * (phi_S[i] - V2V_Rate_semantic[i, j] / 1000))) + (1 - w) / (1 + np.exp(lamda[i] * (si[i] - V2V_semantic[i, j])))
                     QoE.append(QoE2 / 4)
         if V2I_number == 2:#有2个V2I链路, 其中5为多模态句子长度数组索引
             index = np.argwhere(platoon_decision == 0)

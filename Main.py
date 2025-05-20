@@ -16,6 +16,19 @@ mat_data2 = scipy.io.loadmat('VQA_table.mat')
 single_table_data = mat_data1['sem_table']
 bi_table_data = mat_data2['VQA_table']
 
+
+'''
+---------------------------------------------------------------------------------------
+Simulation code of the paper:
+    "AoI-Aware Resource Allocation for Platoon-Based C-V2X Networks via Multi-Agent 
+                        Multi-Task Reinforcement Learning"
+
+Written by  : Mohammad Parvini, M.Sc. student at Tarbiat Modares University.
+---------------------------------------------------------------------------------------
+---> We have built our simulation following the urban case defined in Annex A of 
+     3GPP, TS 36.885, "Study on LTE-based V2X Services".
+---------------------------------------------------------------------------------------
+'''
 # ################## SETTINGS ######################
 up_lanes = [i / 2.0 for i in
             [3.5 / 2, 3.5 / 2 + 3.5, 250 + 3.5 / 2, 250 + 3.5 + 3.5 / 2, 500 + 3.5 / 2, 500 + 3.5 + 3.5 / 2]]
@@ -51,13 +64,13 @@ symbol_length_text = [2, 4, 6, 8, 10]
 symbol_length_image = [394, 788, 1576, 2364, 3152]
 
 max_power = 30  # platoon leader maximum power in dbm ---> watt = 10^[(dbm - 30)/10]
-V2I_min = 540  # minimum required data rate for V2I Communication = 3bps/Hz
+V2I_min = 540 # minimum required data rate for V2I Communication = 3bps/Hz
 bandwidth = int(180000)
 V2V_size = int((4000) * 8) # V2V payload: 4000 Bytes every 100 ms
 
-u=20
+u= 20
 V2I_min_semantic = 540
-V2V_size_semantic = int((4000) * 8)/u
+V2V_size_semantic = int((6000) * 8)/u
 
 # ------------------------------------------------------------------------------------------------------------------ #
 # ------------------------------------------------------------------------------------------------------------------ #
@@ -65,7 +78,7 @@ env = ENV.Environ(down_lanes, up_lanes, left_lanes, right_lanes, width, height, 
                   V2I_min, bandwidth, V2V_size_semantic, Gap)
 env.new_random_game()  # initialize parameters in env
 
-n_episode = 1000
+n_episode = 50
 n_step_per_episode = int(env.time_slow / env.time_fast)
 n_episode_test = 100  # test episodes
 # ------------------------------------------------------------------------------------------------------------------ #
@@ -128,6 +141,9 @@ print("Initializing Global critic ...")
 global_agent = Global_Critic(beta, marl_n_input, tau, marl_n_output, gamma, C_fc1_dims, C_fc2_dims, C_fc3_dims,
                  batch_size, n_platoon, update_actor_interval, noise)
 
+global_agent.load_models()
+for i in range(n_platoon):
+    agents[i].load_models()
 ## Let's go
 #AoI_evolution = np.zeros([n_platoon, n_episode_test, n_step_per_episode], dtype=np.float16)
 Demand_total = np.zeros([n_platoon, n_episode_test, n_step_per_episode], dtype=np.float16)
@@ -139,17 +155,25 @@ power_total = np.zeros([n_platoon, n_episode_test, n_step_per_episode], dtype=np
 record_reward_ = np.zeros([n_episode], dtype=np.float16)
 record_QoE_ = np.zeros([n_episode], dtype=np.float16)
 per_total_user_ = np.zeros([n_platoon, n_episode], dtype=np.float16)
+record_V2V_success_ = []
+
+step_counter = 0  # 新增计数器
+transmission_completed = False
+
 if IS_TRAIN:
     # agent.load_models()
     record_critics_loss_ = np.zeros([n_platoon + 1, n_episode])
     record_global_reward_average = []
     for i_episode in range(n_episode):
+        step_counter = 0  # 每个 episode 开始时重置计数器
         done = False
+        transmission_completed = False  # 每个episode开始时重置标志
         print("----------------------------Episode: ", i_episode, "--------------------------------")
         record_reward = np.zeros([n_step_per_episode], dtype=np.float16)
         record_QoE = np.zeros([n_step_per_episode], dtype=np.float16)
         record_global_reward = np.zeros(n_step_per_episode)
         per_total_user = np.zeros([n_platoon, n_step_per_episode], dtype=np.float16)
+        record_V2V_success = []
 
         env.V2V_demand_semantic = env.V2V_demand_size_semantic * np.ones(n_platoon, dtype=np.float16)
         env.individual_time_limit_semantic = env.time_slow * np.ones(n_platoon, dtype=np.float16)
@@ -190,28 +214,25 @@ if IS_TRAIN:
                 env.act_for_training(action_temp, V2V_length_action)
             record_global_reward[i_step] = global_reward
             record_QoE[i_step] = QoE.copy()
+            record_V2V_success.append(V2V_success)
             for i in range(n_platoon):
                 per_total_user[i, i_step] = training_reward[i]
 
+            # 检查传输是否完成
+            if not transmission_completed and np.all(env.V2V_demand_semantic <= 0):
+                transmission_completed = True  # 标记为已完成
+                print(f"传输完成！当前 episode {i_episode} 的 step 数: {step_counter}")
+                step_counter = 0  # 重置计数器（可选）
+            else:
+                step_counter += 1  # 未完成则计数器加1
+
             env.renew_channels_fastfading()
             env.Compute_Interference(action_temp)
+
             # get new state
             for i in range(n_platoon):
                 state_new = get_state(env, i)
                 state_new_all.append(state_new)
-
-            if i_step == n_step_per_episode - 1:
-                done = True
-
-            # taking the agents actions, states and reward
-            memory.store_transition(np.asarray(state_old_all).flatten(), np.asarray(action_all).flatten(),
-                                        global_reward, training_reward, np.asarray(state_new_all).flatten(), done)
-
-            # agents take random samples and learn
-            if memory.mem_cntr >= batch_size:
-                states, actions, rewards_g, rewards_l, states_, dones = memory.sample_buffer(batch_size)
-
-                global_agent.global_learn(agents, states, actions, rewards_g, rewards_l, states_, dones)
 
             # old observation = new_observation
             for i in range(n_platoon):
@@ -220,12 +241,7 @@ if IS_TRAIN:
         for i in range(n_platoon):
             per_total_user_[i, i_episode] = np.mean(per_total_user[i])
             print('user', i, per_total_user_[i, i_episode], end='   ')
-        record_critics_loss_[0, i_episode] = np.mean(np.asarray(global_agent.Global_Loss))
-        global_agent.Global_Loss = []
 
-        for i in range(n_platoon):
-            record_critics_loss_[i + 1, i_episode] = np.mean(np.asarray(agents[i].local_critic_loss))
-            agents[i].local_critic_loss = []
             '''for i in range(n_platoon):
                 #AoI_evolution[i, i_episode % 100, i_step] = platoon_AoI[i]
                 Demand_total[i, i_episode % 100, i_step] = V2V_demand_semantic[i]
@@ -235,60 +251,8 @@ if IS_TRAIN:
 
         record_global_reward_average.append(np.mean(record_global_reward))
         record_QoE_[i_episode] = np.mean(record_QoE)
-        #AoI_total[:, i_episode] = np.mean(record_AoI, axis=1)
-        print('agents rewards :', np.mean(record_global_reward), 'Sum QoE:', record_QoE_[i_episode])
-
-        if (i_episode + 1) % 50 == 0:
-            global_agent.save_models()
-            for i in range(n_platoon):
-                agents[i].save_models()
-
-    print('Training Done. Saving models...')
-    np.save('Data/MARL_DDPG_Reward.npy', record_global_reward_average)
-    plt.figure(1)
-    x = np.linspace(0, n_episode - 1, n_episode, dtype=int)
-    y1 = record_global_reward_average
-    plt.plot(x, y1)
-    plt.xlabel('Episode')
-    plt.ylabel('Reward')
-    plt.figure(2)
-    x = np.linspace(0, n_episode - 1, n_episode, dtype=int)
-    y2 = record_QoE_
-    plt.plot(x, y2)
-    plt.xlabel('Episode')
-    plt.ylabel('QoE')
-    y2 = per_total_user_[0, :]
-    y3 = per_total_user_[1, :]
-    y4 = per_total_user_[2, :]
-    y5 = per_total_user_[3, :]
-    np.save('Data/Platoon0_Reward_1000.npy', y2)
-    np.save('Data/Platoon1_Reward_1000.npy', y3)
-    np.save('Data/Platoon2_Reward_1000.npy', y4)
-    np.save('Data/Platoon3_Reward_1000.npy', y5)
-    plt.figure(3)
-    plt.subplot(2, 2, 1)
-
-    plt.plot(x, y2)
-    plt.xlabel('Episode')
-    plt.ylabel('Platoon0_Reward')
-
-    plt.subplot(2, 2, 2)
-
-    plt.plot(x, y3)
-    plt.xlabel('Episode')
-    plt.ylabel('Platoon1_Reward')
-
-    plt.subplot(2, 2, 3)
-
-    plt.plot(x, y4)
-    plt.xlabel('Episode')
-    plt.ylabel('Platoon2_Reward')
-
-    plt.subplot(2, 2, 4)
-
-    plt.plot(x, y5)
-    plt.xlabel('Episode')
-    plt.ylabel('Platoon3_Reward')
-
-    plt.tight_layout()
-    plt.show()
+        record_V2V_success_.append(np.mean(record_V2V_success))
+        print('agents rewards :', np.mean(record_global_reward), 'Sum QoE:', record_QoE_[i_episode], 'V2V success:',
+              np.mean(record_V2V_success))
+    print('average reward: ', np.mean(record_global_reward_average), 'average QoE:', np.mean(record_QoE_), 'V2V success:',
+              np.mean(record_V2V_success_))

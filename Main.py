@@ -27,6 +27,7 @@ Written by  : Mohammad Parvini, M.Sc. student at Tarbiat Modares University.
 ---------------------------------------------------------------------------------------
 ---> We have built our simulation following the urban case defined in Annex A of 
      3GPP, TS 36.885, "Study on LTE-based V2X Services".
+     
 ---------------------------------------------------------------------------------------
 '''
 # ################## SETTINGS ######################

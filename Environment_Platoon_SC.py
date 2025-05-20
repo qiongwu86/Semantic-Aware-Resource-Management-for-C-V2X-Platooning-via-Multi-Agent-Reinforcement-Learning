@@ -69,6 +69,7 @@ class V2Ichannels:
         self.BS_position = [750 / 2, 1299 / 2]  # center of the grids
         self.shadow_std = 8
 
+    
     def get_path_loss(self, position_A):
         d1 = abs(position_A[0] - self.BS_position[0])
         d2 = abs(position_A[1] - self.BS_position[1])

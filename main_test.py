@@ -64,13 +64,13 @@ symbol_length_text = [2, 4, 6, 8, 10]
 symbol_length_image = [394, 788, 1576, 2364, 3152]
 
 max_power = 30  # platoon leader maximum power in dbm ---> watt = 10^[(dbm - 30)/10]
-V2I_min = 540  # minimum required data rate for V2I Communication = 3bps/Hz
+V2I_min = 540 # minimum required data rate for V2I Communication = 3bps/Hz
 bandwidth = int(180000)
 V2V_size = int((4000) * 8) # V2V payload: 4000 Bytes every 100 ms
 
-u=20
+u= 20
 V2I_min_semantic = 540
-V2V_size_semantic = int((4000) * 8)/u
+V2V_size_semantic = int((6000) * 8)/u
 
 # ------------------------------------------------------------------------------------------------------------------ #
 # ------------------------------------------------------------------------------------------------------------------ #
@@ -156,12 +156,18 @@ record_reward_ = np.zeros([n_episode], dtype=np.float16)
 record_QoE_ = np.zeros([n_episode], dtype=np.float16)
 per_total_user_ = np.zeros([n_platoon, n_episode], dtype=np.float16)
 record_V2V_success_ = []
+
+step_counter = 0  # 新增计数器
+transmission_completed = False
+
 if IS_TRAIN:
     # agent.load_models()
     record_critics_loss_ = np.zeros([n_platoon + 1, n_episode])
     record_global_reward_average = []
     for i_episode in range(n_episode):
+        step_counter = 0  # 每个 episode 开始时重置计数器
         done = False
+        transmission_completed = False  # 每个episode开始时重置标志
         print("----------------------------Episode: ", i_episode, "--------------------------------")
         record_reward = np.zeros([n_step_per_episode], dtype=np.float16)
         record_QoE = np.zeros([n_step_per_episode], dtype=np.float16)
@@ -212,8 +218,17 @@ if IS_TRAIN:
             for i in range(n_platoon):
                 per_total_user[i, i_step] = training_reward[i]
 
+            # 检查传输是否完成
+            if not transmission_completed and np.all(env.V2V_demand_semantic <= 0):
+                transmission_completed = True  # 标记为已完成
+                print(f"传输完成！当前 episode {i_episode} 的 step 数: {step_counter}")
+                step_counter = 0  # 重置计数器（可选）
+            else:
+                step_counter += 1  # 未完成则计数器加1
+
             env.renew_channels_fastfading()
             env.Compute_Interference(action_temp)
+
             # get new state
             for i in range(n_platoon):
                 state_new = get_state(env, i)
